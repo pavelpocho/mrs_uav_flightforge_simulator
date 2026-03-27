@@ -109,6 +109,7 @@ private:
   std::mutex mutex_sim_time_;
 
   std::string _world_frame_name_;
+  std::string _simulator_ip_ = LOCALHOST;
 
   // | ------------------------- timers ------------------------- |
 
@@ -735,6 +736,16 @@ void FlightforgeSimulator::timerInit() {
 
   param_loader.loadParam(yaml_prefix + "simulation_rate", _simulation_rate_);
   param_loader.loadParam(yaml_prefix + "clock_rate", _clock_rate_);
+param_loader.loadParam(yaml_prefix + "simulator_ip", _simulator_ip_);
+
+  // Validate the simulator_ip parameter
+  if (_simulator_ip_.empty()) {
+    RCLCPP_ERROR(node_->get_logger(), "simulator_ip parameter is empty!");
+    rclcpp::shutdown();
+    exit(1);
+  }
+
+  RCLCPP_INFO(node_->get_logger(), "Using simulator IP: %s", _simulator_ip_.c_str());
 
   if (_clock_rate_ < _simulation_rate_) {
     RCLCPP_ERROR(
@@ -1064,17 +1075,18 @@ void FlightforgeSimulator::timerInit() {
   // | ----------- initialize the FlightForge connector ---------- |
 
   ueds_game_controller_ =
-      std::make_shared<ueds_connector::GameModeController>(LOCALHOST, 8551);
+      std::make_shared<ueds_connector::GameModeController>(_simulator_ip_, 8551);
 
   while (rclcpp::ok()) {
+    auto connect_result = ueds_game_controller_->Connect();
 
-    if (ueds_game_controller_->Connect()) {
+    if (connect_result == kissnet::socket_status::valid) {
       break;
     }
 
     RCLCPP_ERROR(node_->get_logger(),
-                 "[FlightforgeSimulator]: Error connecting to Unreal's game "
-                 "mode controller");
+                 "[FlightforgeSimulator]: Error connecting to Unreal's game mode controller at %s:%d (status=%d)",
+                 _simulator_ip_.c_str(), 8551, static_cast<int>(connect_result));
 
     std::this_thread::sleep_for(1s);
   }
@@ -1141,19 +1153,21 @@ void FlightforgeSimulator::timerInit() {
 
   std::this_thread::sleep_for(std::chrono::seconds(5));
 
-  while (true) {
-    bool connect_result = ueds_game_controller_->Connect();
-    if (connect_result != 1) {
-      RCLCPP_ERROR(node_->get_logger(),
-                   "Error connecting to Unreal's game mode controller, "
-                   "connect_result was %d",
-                   connect_result);
+  while (rclcpp::ok()) {
+    const auto connect_result = ueds_game_controller_->Connect();
+    if (connect_result != kissnet::socket_status::valid) {
+      RCLCPP_ERROR(node_->get_logger(), "Error connecting to Unreal's game mode controller at %s:%d (status=%d)", _simulator_ip_.c_str(),
+                   8551, static_cast<int>(connect_result));
     } else {
       break;
     }
     /* TODO: This should be probably shomehow be dynamic and set to a
      * machine/world combo */
     std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
+ if (!rclcpp::ok()) {
+    RCLCPP_ERROR(node_->get_logger(), "ROS shutdown requested before reconnecting to Unreal's game mode controller");
+    return;
   }
 
   res = ueds_game_controller_->SetGraphicsSettings(
@@ -1274,18 +1288,16 @@ void FlightforgeSimulator::timerInit() {
     RCLCPP_INFO(node_->get_logger(), "%s spawned", uav_name.c_str());
 
     std::shared_ptr<ueds_connector::UedsConnector> ueds_connector =
-        std::make_shared<ueds_connector::UedsConnector>(LOCALHOST, port);
+        std::make_shared<ueds_connector::UedsConnector>(_simulator_ip_, port);
 
     ueds_connectors_.push_back(ueds_connector);
 
     auto connect_result = ueds_connector->Connect();
 
-    if (connect_result != 1) {
+    if (connect_result != kissnet::socket_status::valid) {
 
-      RCLCPP_ERROR(
-          node_->get_logger(),
-          "%s - Error connecting to drone controller, connect_result was %d",
-          uav_name.c_str(), connect_result);
+      RCLCPP_ERROR(node_->get_logger(), "%s - Error connecting to drone controller at %s:%d (status=%d)", uav_name.c_str(), _simulator_ip_.c_str(),
+                   port, static_cast<int>(connect_result));
       rclcpp::shutdown();
 
     } else {

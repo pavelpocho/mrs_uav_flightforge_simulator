@@ -58,10 +58,10 @@ mrs_uav_flightforge_simulator:
   ############ Only Forest Procedural Generation settings ############
 
   # Choose cluttered difficulties from 1 [high] to 10 [low]
-  ueds_forest_density: 6
+  flightforge_forest_density: 6
 
   # Choose Hilly Level from 1 [totally flat] to 5 [the most hilly]
-  ueds_forest_hilly_level: 3
+  flightforge_forest_hilly_level: 3
 
   ####################################################################
 

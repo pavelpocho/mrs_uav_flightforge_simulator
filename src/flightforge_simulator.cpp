@@ -27,6 +27,8 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/point_field.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+
+#include <std_msgs/msg/bool.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/compressed_image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -166,6 +168,7 @@ private:
   std::vector<mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>> ph_lidars_;
   std::vector<mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>> ph_seg_lidars_;
   std::vector<mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>> ph_int_lidars_;
+  std::vector<mrs_lib::PublisherHandler<std_msgs::msg::Bool>>          ph_crash_;
 
   std::vector<image_transport::Publisher> ph_img_rgb_;
   std::vector<image_transport::Publisher> ph_imp_stereo_left_;
@@ -852,6 +855,8 @@ void FlightforgeSimulator::timerInit() {
   param_loader.loadParam(yaml_prefix + "daytime/hour", daytime_hour_);
   param_loader.loadParam(yaml_prefix + "daytime/minute", daytime_minute_);
   param_loader.loadParam(yaml_prefix + "world_name", flightforge_world_level_name_enum_);
+  param_loader.loadParam(yaml_prefix + "flightforge_forest_density", flightforge_forest_density_);
+  param_loader.loadParam(yaml_prefix + "flightforge_forest_hilly_level", flightforge_forest_hilly_level_);
 
   if (!param_loader.loadedSuccessfully() || !dynparam_mgr_->loaded_successfully()) {
     RCLCPP_ERROR(node_->get_logger(), "could not load all parameters!");
@@ -994,21 +999,21 @@ void FlightforgeSimulator::timerInit() {
 
   /* // | --------------------- These graphical settings influence only Forest Game World --------------------- | */
 
-  /* res = ueds_game_controller_->SetForestDensity(ueds_forest_density_); */
-  /* if (res) { */
-  /*   ROS_INFO("[UnrealSimulator]: Forest Density was set succesfully to '%d'", ueds_forest_density_); */
-  /* } else { */
-  /*   ROS_ERROR("[UnrealSimulator]: Forest Density wasn't set succesfully to '%d'", ueds_forest_density_); */
-  /* } */
+  res = ueds_game_controller_->SetForestDensity(flightforge_forest_density_);
+  if (res) {
+    RCLCPP_INFO(node_->get_logger(), "Forest Density was set succesfully to '%d'", flightforge_forest_density_);
+  } else {
+    RCLCPP_ERROR(node_->get_logger(), "Forest Density wasn't set succesfully to '%d'", flightforge_forest_density_);
+  }
 
-  /* res = ueds_game_controller_->SetForestHillyLevel(ueds_forest_hilly_level_); */
-  /* if (res) { */
-  /*   ROS_INFO("[UnrealSimulator]: Forest Hilly Level was set succesfully to '%d'", ueds_forest_hilly_level_); */
-  /* } else { */
-  /*   ROS_ERROR("[UnrealSimulator]: Forest Hilly Level wasn't set succesfully to '%d'", ueds_forest_hilly_level_); */
-  /* } */
+  res = ueds_game_controller_->SetForestHillyLevel(flightforge_forest_hilly_level_);
+  if (res) {
+    RCLCPP_INFO(node_->get_logger(), "Forest Hilly Level was set succesfully to '%d'", flightforge_forest_hilly_level_);
+  } else {
+    RCLCPP_ERROR(node_->get_logger(), "Forest Hilly Level wasn't set succesfully to '%d'", flightforge_forest_hilly_level_);
+  }
 
-  /* std::this_thread::sleep_for(std::chrono::seconds(1)); */
+  std::this_thread::sleep_for(std::chrono::seconds(1));
 
   // | --------------------- Spawn the UAVs in FlightForge --------------------- |
 
@@ -1080,6 +1085,8 @@ void FlightforgeSimulator::timerInit() {
     ph_lidars_.push_back(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(node_, "/" + uav_name + "/lidar/points"));
     ph_seg_lidars_.push_back(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(node_, "/" + uav_name + "/lidar_segmented/points"));
     ph_int_lidars_.push_back(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(node_, "/" + uav_name + "/lidar_intensity/points"));
+
+    ph_crash_.push_back(mrs_lib::PublisherHandler<std_msgs::msg::Bool>(node_, "/" + uav_name + "/crash"));
 
     ph_img_rgb_.push_back(it_->advertise("/" + uav_name + "/rgb/image_raw", 1));
     ph_imp_stereo_left_.push_back(it_->advertise("/" + uav_name + "/stereo/left/image_raw", 1));
@@ -2501,14 +2508,6 @@ void FlightforgeSimulator::checkForCrash(void) {
 
       /* if the uav has crashed check the rangefinder data to determine if its not just a landing */
       if (crashed) {
-        bool   res_range;
-        double range;
-        {
-          std::scoped_lock lock(mutex_flightforge_);
-
-          std::tie(res_range, range) = ueds_connectors_[i]->GetRangefinderData();
-        }
-
         /* if (res_range && range < 0.1) { */
         /*   crashed = false; */
         /*   if (set_ground_z_clients_[i].exists()) { */
@@ -2536,7 +2535,10 @@ void FlightforgeSimulator::checkForCrash(void) {
 
       if (res && crashed && !uavs_[i]->hasCrashed()) {
         RCLCPP_WARN_THROTTLE(node_->get_logger(), *clock_, 1000, "Uav%lu crashed", i + 1);
-        uavs_[i]->crash();
+
+        std_msgs::msg::Bool crash_msg;
+        crash_msg.data = true;
+        ph_crash_.at(i).publish(crash_msg);
       }
     }
   }

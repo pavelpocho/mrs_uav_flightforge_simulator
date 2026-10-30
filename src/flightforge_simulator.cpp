@@ -1575,7 +1575,10 @@ void FlightforgeSimulator::timerRangefinder() {
     sensor_msgs::msg::Range msg_range;
     auto                    last_step_time = mrs_lib::get_mutexed(mutex_sim_time_, last_step_time_);
     msg_range.header.stamp                 = last_step_time;
-    msg_range.header.frame_id              = "uav" + std::to_string(i + 1) + "/fcu";
+    // The rangefinder's own frame (frames/rangefinder, its TF published by the
+    // multirotor model): MRS reads a range along the frame's x axis, which in
+    // fcu points forward -- the height came out ~0. In garmin x points down.
+    msg_range.header.frame_id              = "uav" + std::to_string(i + 1) + "/garmin";
     msg_range.radiation_type               = 1;
     msg_range.min_range                    = 0.1;
     msg_range.max_range                    = 30;

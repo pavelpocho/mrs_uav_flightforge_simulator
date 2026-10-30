@@ -110,7 +110,10 @@ def generate_launch_description():
                 remappings=[
                   ("~/simulator_imu_in", ["/flightforge_simulator/", uav_name, "/imu"]),
                   ("~/simulator_odom_in", ["/flightforge_simulator/", uav_name, "/odom"]),
-                  ("~/simulator_rangefinder_in", ["/flightforge_simulator/", uav_name, "/rangefinder"]),
+                  # Unreal's rangefinder, a ray to the terrain -- not the
+                  # multirotor model's /flightforge_simulator/<uav>/rangefinder,
+                  # the distance to its own flat ground_z plane.
+                  ("~/simulator_rangefinder_in", ["/", uav_name, "/rangefinder"]),
                   ("~/simulator_actuators_cmd_out", ["/flightforge_simulator/", uav_name, "/actuators_cmd"]),
                   ("~/simulator_control_group_cmd_out", ["/flightforge_simulator/", uav_name, "/control_group_cmd"]),
                   ("~/simulator_attitude_rate_cmd_out", ["/flightforge_simulator/", uav_name, "/attitude_rate_cmd"]),

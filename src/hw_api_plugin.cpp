@@ -18,6 +18,8 @@
 
 #include <mrs_lib/gps_conversions.h>
 
+#include <tf2_ros/static_transform_broadcaster.hpp>
+
 //}
 
 /* typedefs //{ */
@@ -63,6 +65,10 @@ public:
   std::string _body_frame_name_;
 
   double _input_timeout_;
+
+  // The RTK antenna's static TF, which TransformManager requires whenever an
+  // RTK estimator is used.
+  std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
 
   // | --------------------- status methods --------------------- |
 
@@ -300,6 +306,28 @@ void Api::initialize(const rclcpp::Node::SharedPtr& node, std::shared_ptr<mrs_ua
     opts.autostart = true;
 
     timer_main_ = std::make_shared<TimerType>(opts, rclcpp::Rate(10.0, clock_), callback_fcn);
+  }
+
+  // | ------------------ RTK antenna static TF ----------------- |
+
+  // TransformManager waits for <uav>/fcu -> <uav>/rtk_antenna when an RTK
+  // estimator ("rtk", "rtk_garmin") is used, and shuts down without it. The
+  // RTK position published below is the FCU's own, so the antenna sits at the
+  // FCU: identity, as mrs_multirotor_simulator's HW API plugin publishes it.
+  // On a real UAV this TF comes from the deployment's static TFs.
+  if (_capabilities_.produces_rtk) {
+
+    static_tf_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node_);
+
+    geometry_msgs::msg::TransformStamped tf;
+
+    tf.header.stamp    = node_->get_clock()->now();
+    tf.header.frame_id = _uav_name_ + "/" + _body_frame_name_;
+    tf.child_frame_id  = _uav_name_ + "/rtk_antenna";
+
+    tf.transform.rotation = mrs_lib::AttitudeConverter(0, 0, 0);
+
+    static_tf_broadcaster_->sendTransform(tf);
   }
 
   // | ----------------------- finish init ---------------------- |
